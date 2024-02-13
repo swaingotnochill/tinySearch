@@ -1,10 +1,16 @@
+# tinySearch: A tiny search engine tool in rust.
+
+### Technique:
+
+    It uses tf-idf.
+
 ### References:
 
 - https://en.wikipedia.org/wiki/Tf%E2%8...
 - https://github.com/tsoding/xkcd-indexer
 - https://github.com/BSVino/docs.gl
-- Source Code: https://github.com/tsoding/seroost
+- https://github.com/tsoding/seroost
 
-timstamp:
+### Acknowledgement
 
-- 1:00:00
+- Alexey Kutepov(aka tsoding)
