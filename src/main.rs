@@ -4,6 +4,8 @@ use std::fs::{self, File};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::result::Result;
+use std::str;
+use tiny_http::{Header, Method, Request, Response, Server};
 use xml::common::{Position, TextPosition};
 use xml::reader::{EventReader, XmlEvent};
 
@@ -185,6 +187,57 @@ fn usage(program: &str) {
     eprintln!("Subcommands: ");
     eprintln!("  index <folder>   index the <folder> and save the index to index.json file");
     eprintln!("  search <index-file>   check how many documents are indexed in the file (searching is not implemented yet)");
+    eprintln!("  serve [address]   start the server at the address");
+}
+
+fn serve_static_file(request: Request, file_path: &str, content_type: &str) -> Result<(), ()> {
+    let header = Header::from_bytes("Content-Type", content_type).unwrap();
+    let file = File::open(file_path).map_err(|err| {
+        eprintln!("ERROR: could not open file {file_path}: {err}");
+    })?;
+    let response = Response::from_file(file).with_header(header);
+    request
+        .respond(response)
+        .unwrap_or_else(|err| eprintln!("ERROR: could not serve a request: {err}"));
+    Ok(())
+}
+
+fn serve_404(request: Request) -> Result<(), ()> {
+    request
+        .respond(Response::from_string("404").with_status_code(404))
+        .map_err(|err| eprintln!("ERROR: could not serve request: {err}"))?;
+    Ok(())
+}
+
+fn serve_request(mut request: Request) -> Result<(), ()> {
+    println!(
+        "INFO: received request! method: {:?}, url : {:?}",
+        request.method(),
+        request.url(),
+    );
+    match (request.method(), request.url()) {
+        (Method::Post, "/api/search") => {
+            let mut buf = Vec::new();
+            request.as_reader().read_to_end(&mut buf);
+            let body = str::from_utf8(&buf).map_err(|err| {
+                eprintln!("ERROR: could not interpret body as UTF-8 string : {err}")
+            })?;
+            println!("Search: {body}");
+            request
+                .respond(Response::from_string("ok"))
+                .map_err(|err| eprintln!("ERROR: {err}"));
+        }
+        (Method::Get, "/") | (Method::Get, "/index.html") => {
+            let index_html_path = "src/index.html";
+            serve_static_file(request, index_html_path, "text/html, charset=utf-8")?;
+        }
+        (Method::Get, "/index.js") => {
+            let index_js_path = "src/index.js";
+            serve_static_file(request, index_js_path, "text/javascript, charset=utf-8")?;
+        }
+        _ => serve_404(request)?,
+    }
+    Ok(())
 }
 
 fn entry() -> Result<(), ()> {
@@ -213,6 +266,18 @@ fn entry() -> Result<(), ()> {
                 eprintln!("ERROR: no path to index is provided for {sub_command} subcommand")
             })?;
             check_index(&index_path);
+        }
+        "serve" => {
+            let address = args.next().unwrap_or("127.0.0.1:8888".to_string());
+            let server = Server::http(&address).map_err(|err| {
+                eprintln!("ERROR: could not start HTTP server at {address} : {err}");
+            })?;
+
+            println!("INFO: server listening at http://{address}/");
+
+            for request in server.incoming_requests() {
+                serve_request(request);
+            }
         }
         _ => {
             usage(&program);
